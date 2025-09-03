@@ -1,19 +1,5 @@
 ## Go URL Shortener
 
-Simple URL shortener service with in-memory storage.
-
-### Run
-
-```bash
-go run .
-```
-
-Environment variables:
-- `ADDR` (default `:8080`)
-- `DOMAIN` (default `http://localhost:8080`)
-
-### Step-by-step (junior-friendly)
-
 1) Start server
 ```bash
 go run .
