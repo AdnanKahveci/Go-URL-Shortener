@@ -5,33 +5,39 @@ import (
 	"net/http"
 	"os"
 
-	"go-url-shortener/internal/api"
+	"go-url-shortener/internal/handler"
 	"go-url-shortener/internal/service"
 	"go-url-shortener/internal/storage"
 )
 
 func main() {
+	// Get server address from environment or use default
 	addr := getEnv("ADDR", ":8080")
-	domain := getEnv("DOMAIN", "http://localhost:8080")
+	baseURL := getEnv("BASE_URL", "http://localhost:8080")
 
-	store := storage.NewMemoryStore()
-	svc := service.New(store, domain)
-	h := api.NewHandler(svc)
+	// Initialize storage, service and handler
+	store := storage.NewInMemoryStorage()
+	svc := service.NewService(store)
+	h := handler.NewHandler(svc, baseURL)
 
-	mux := http.NewServeMux()
-	h.Register(mux)
+	// Register routes according to acceptance criteria
+	http.HandleFunc("/api/shorten", h.Shorten) // POST /api/shorten for creating short URLs
+	http.HandleFunc("/", h.Redirect)           // GET /{code} for redirecting
 
-	log.Printf("starting server on %s with domain %s", addr, domain)
-	if err := http.ListenAndServe(addr, mux); err != nil {
-		log.Fatalf("server error: %v", err)
+	log.Printf("Starting URL Shortener server on %s", addr)
+	log.Printf("Base URL: %s", baseURL)
+	log.Printf("API Endpoints:")
+	log.Printf("  POST %s/api/shorten - Create short URL", baseURL)
+	log.Printf("  GET  %s/{code} - Redirect to original URL", baseURL)
+
+	if err := http.ListenAndServe(addr, nil); err != nil {
+		log.Fatalf("Server failed to start: %v", err)
 	}
 }
 
-func getEnv(key, def string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
+func getEnv(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
 	}
-	return def
+	return defaultValue
 }
-
-

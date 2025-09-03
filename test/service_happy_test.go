@@ -3,25 +3,25 @@ package test
 import (
     "testing"
 
-    svc "go-url-shortener/internal/service"
+    "go-url-shortener/internal/service"
     "go-url-shortener/internal/storage"
 )
 
 func TestService_CreateAndResolve_Happy(t *testing.T) {
-    store := storage.NewMemoryStore()
-    s := svc.New(store, "http://localhost:8080")
+    store := storage.NewInMemoryStorage()
+    s := service.NewService(store)
 
-    resp, err := s.CreateShort(svc.CreateShortRequest{URL: "https://example.com"})
+    shortCode, err := s.ShortenURL("https://example.com")
     if err != nil {
         t.Fatalf("unexpected error: %v", err)
     }
-    if resp.Code == "" || resp.Short == "" {
-        t.Fatalf("expected code and short, got %+v", resp)
+    if shortCode == "" {
+        t.Fatalf("expected shortCode, got empty")
     }
 
-    url, ok := s.Resolve(resp.Code)
-    if !ok || url != "https://example.com" {
-        t.Fatalf("resolve failed: %v %s", ok, url)
+    url, err2 := s.GetLongURL(shortCode)
+    if err2 != nil || url != "https://example.com" {
+        t.Fatalf("resolve failed: %v %s", err2, url)
     }
 }
 

@@ -7,15 +7,19 @@ import (
     "net/http/httptest"
     "testing"
 
-    "go-url-shortener/internal/api"
-    svc "go-url-shortener/internal/service"
+    "go-url-shortener/internal/handler"
+    "go-url-shortener/internal/service"
     "go-url-shortener/internal/storage"
 )
 
 func TestAPI_InvalidURL_And_NotFound(t *testing.T) {
-    h := api.NewHandler(svc.New(storage.NewMemoryStore(), "http://localhost:8080"))
+    store := storage.NewInMemoryStorage()
+    svc := service.NewService(store)
+    h := handler.NewHandler(svc, "http://localhost:8080")
+    
     mux := http.NewServeMux()
-    h.Register(mux)
+    mux.HandleFunc("/api/shorten", h.Shorten)
+    mux.HandleFunc("/", h.Redirect)
 
     // invalid URL
     body, _ := json.Marshal(map[string]any{"url": "ftp://bad"})

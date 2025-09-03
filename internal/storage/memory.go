@@ -3,114 +3,75 @@ package storage
 import (
 	"errors"
 	"sync"
-	"time"
 )
 
-// Entry represents a stored short-code mapping to an original URL.
-type Entry struct {
-	OriginalURL string
-	CreatedAt   time.Time
-	ExpireAt    *time.Time
-	Clicks      int64
-	LastAccess  *time.Time
+// Storage defines the interface for URL mapping storage.
+// Any type that implements these methods can be used as storage.
+type Storage interface {
+	Save(shortCode, longURL string) error       // Stores a shortCode to longURL mapping
+	Get(shortCode string) (string, bool)        // Retrieves the long URL for a given shortCode
+	GetShortCode(longURL string) (string, bool) // Retrieves the short code for a given long URL (optional, for uniqueness checks)
 }
 
-// Store defines the behaviors required by the URL shortener service.
-type Store interface {
-	// Save stores the mapping if the code does not already exist.
-	Save(code string, url string) error
-	// Get retrieves the original URL associated with a code.
-	Get(code string) (string, bool)
-	// GetEntry returns the full entry including analytics/expiry.
-	GetEntry(code string) (Entry, bool)
-	// SetExpire sets the expiration time for a code.
-	SetExpire(code string, expireAt time.Time) bool
-	// TrackHit increments click count and updates last access time.
-	TrackHit(code string) bool
-	// Exists returns true if the code is already stored.
-	Exists(code string) bool
+// InMemoryStorage implements the Storage interface using in-memory maps.
+// This is suitable for educational purposes but data will be lost on server restart.
+type InMemoryStorage struct {
+	mu          sync.RWMutex      // A Read-Write Mutex to protect concurrent access to maps
+	shortToLong map[string]string // Maps short codes to long URLs
+	longToShort map[string]string // Maps long URLs to short codes (for checking if a URL is already shortened)
 }
 
-var (
-	// ErrCodeExists is returned when attempting to save using a code that is already taken.
-	ErrCodeExists = errors.New("code already exists")
-)
-
-// MemoryStore is a simple in-memory Store implementation using a map with a RWMutex.
-type MemoryStore struct {
-	mu          sync.RWMutex
-	codeToEntry map[string]Entry
-}
-
-// NewMemoryStore creates a new MemoryStore.
-func NewMemoryStore() *MemoryStore {
-	return &MemoryStore{codeToEntry: make(map[string]Entry)}
-}
-
-// Save stores a new code->URL mapping, returning ErrCodeExists if present.
-func (s *MemoryStore) Save(code string, url string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if _, exists := s.codeToEntry[code]; exists {
-		return ErrCodeExists
+// NewInMemoryStorage creates and returns a new InMemoryStorage instance.
+func NewInMemoryStorage() *InMemoryStorage {
+	return &InMemoryStorage{
+		shortToLong: make(map[string]string), // Initialize the shortCode -> longURL map
+		longToShort: make(map[string]string), // Initialize the longURL -> shortCode map
 	}
-	s.codeToEntry[code] = Entry{OriginalURL: url, CreatedAt: time.Now()}
+}
+
+// NewMemoryStore is an alias for NewInMemoryStorage to match test expectations
+func NewMemoryStore() *InMemoryStorage {
+	return NewInMemoryStorage()
+}
+
+// Save stores a shortCode to longURL mapping in the in-memory maps.
+// It acquires a write lock to prevent race conditions during write operations.
+func (s *InMemoryStorage) Save(shortCode, longURL string) error {
+	s.mu.Lock()         // Acquire an exclusive write lock
+	defer s.mu.Unlock() // Ensure the lock is released when the function exits
+
+	// Check if shortCode already exists. With the current generation logic, this
+	// should ideally not happen unless there's an issue with counter uniqueness
+	// or if custom short codes were allowed and conflicted.
+	if _, exists := s.shortToLong[shortCode]; exists {
+		return errors.New("short code already exists")
+	}
+	// Check if the longURL has already been shortened to prevent duplicate entries
+	// for the same long URL.
+	if _, exists := s.longToShort[longURL]; exists {
+		return errors.New("long URL already shortened")
+	}
+
+	s.shortToLong[shortCode] = longURL // Store the forward mapping
+	s.longToShort[longURL] = shortCode // Store the reverse mapping
 	return nil
 }
 
-// Get returns the original URL for a given code.
-func (s *MemoryStore) Get(code string) (string, bool) {
+// Get retrieves the long URL for a given shortCode from the in-memory map.
+// It acquires a read lock, allowing multiple concurrent reads.
+func (s *InMemoryStorage) Get(shortCode string) (string, bool) {
+	s.mu.RLock()         // Acquire a shared read lock
+	defer s.mu.RUnlock() // Ensure the lock is released
+
+	longURL, ok := s.shortToLong[shortCode] // Look up the long URL
+	return longURL, ok                      // Return the URL and a boolean indicating if found
+}
+
+// GetShortCode retrieves the short code for a given long URL from the in-memory map.
+// This is used to check if a long URL has already been shortened.
+func (s *InMemoryStorage) GetShortCode(longURL string) (string, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	e, ok := s.codeToEntry[code]
-	if !ok {
-		return "", false
-	}
-	return e.OriginalURL, true
+	shortCode, ok := s.longToShort[longURL]
+	return shortCode, ok
 }
-
-// GetEntry returns the stored entry for a code.
-func (s *MemoryStore) GetEntry(code string) (Entry, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	e, ok := s.codeToEntry[code]
-	return e, ok
-}
-
-// SetExpire sets the expiration time for an existing code.
-func (s *MemoryStore) SetExpire(code string, expireAt time.Time) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	e, ok := s.codeToEntry[code]
-	if !ok {
-		return false
-	}
-	e.ExpireAt = &expireAt
-	s.codeToEntry[code] = e
-	return true
-}
-
-// TrackHit updates analytics for a code.
-func (s *MemoryStore) TrackHit(code string) bool {
-	now := time.Now()
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	e, ok := s.codeToEntry[code]
-	if !ok {
-		return false
-	}
-	e.Clicks++
-	e.LastAccess = &now
-	s.codeToEntry[code] = e
-	return true
-}
-
-// Exists indicates whether the code is already stored.
-func (s *MemoryStore) Exists(code string) bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	_, ok := s.codeToEntry[code]
-	return ok
-}
-
-
