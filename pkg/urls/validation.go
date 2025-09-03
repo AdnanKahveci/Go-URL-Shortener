@@ -4,7 +4,7 @@ import (
 	"net/url"
 )
 
-// IsValidURL validates that the URL is a valid HTTP or HTTPS URL
+// IsValidURL validates HTTP/HTTPS URLs only
 func IsValidURL(str string) bool {
 	u, err := url.Parse(str)
 	if err != nil {

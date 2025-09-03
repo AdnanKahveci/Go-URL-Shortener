@@ -5,12 +5,11 @@ import (
 )
 
 const (
-	// Base62 alphabet uses 0-9, A-Z, a-z (62 characters total)
 	alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 	base     = int64(len(alphabet))
 )
 
-// ToBase62 converts an integer to a base62 string
+// ToBase62 converts integer to base62 string
 func ToBase62(num int64) string {
 	if num == 0 {
 		return "0"
@@ -22,7 +21,6 @@ func ToBase62(num int64) string {
 		num /= base
 	}
 
-	// Reverse the string since we built it backwards
 	s := result.String()
 	runes := []rune(s)
 	for i, j := 0, len(runes)-1; i < j; i, j = i+1, j-1 {

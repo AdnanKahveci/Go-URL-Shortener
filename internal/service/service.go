@@ -9,80 +9,66 @@ import (
 	"go-url-shortener/pkg/base62"
 )
 
-// ServiceInterface defines the contract for the URL shortener business logic.
-// This abstraction allows for different implementations of the core logic.
+// ServiceInterface defines URL shortener business logic
 type ServiceInterface interface {
-	ShortenURL(longURL string) (string, error)                           // Shortens a given long URL
-	ShortenURLWithAlias(longURL, customAlias string) (string, error)     // Shortens a URL with custom alias
-	GetLongURL(shortCode string) (string, error)                         // Retrieves the original long URL for a short code
+	ShortenURL(longURL string) (string, error)
+	ShortenURLWithAlias(longURL, customAlias string) (string, error)
+	GetLongURL(shortCode string) (string, error)
 }
 
-// Service implements the ServiceInterface, providing the business logic for URL shortening.
+// Service implements ServiceInterface
 type Service struct {
-	storage   storage.Storage // The underlying storage mechanism (e.g., InMemoryStorage, or a database client)
+	storage   storage.Storage
 	counterMu sync.Mutex
 	counter   int64
 }
 
-// NewService creates and returns a new Service instance.
 func NewService(s storage.Storage) *Service {
 	return &Service{
 		storage: s,
 	}
 }
 
-// ShortenURL generates a short code for a given long URL and stores the mapping.
-// It first checks if the long URL has already been shortened to avoid duplicates.
 func (s *Service) ShortenURL(longURL string) (string, error) {
 	return s.ShortenURLWithAlias(longURL, "")
 }
 
-// ShortenURLWithAlias generates a short code for a given long URL with optional custom alias
 func (s *Service) ShortenURLWithAlias(longURL, customAlias string) (string, error) {
-	// Check if the long URL has already been shortened. If so, return the existing short code.
+	// Check if URL already shortened
 	if existingShortCode, ok := s.storage.GetShortCode(longURL); ok {
 		return existingShortCode, nil
 	}
 
 	var shortCode string
 	if customAlias != "" {
-		// Check if custom alias is already taken
+		// Check if custom alias is available
 		if _, exists := s.storage.Get(customAlias); exists {
 			return "", errors.New("custom alias already exists")
 		}
 		shortCode = customAlias
 	} else {
-		// Generate a new unique short code.
 		shortCode = s.GenerateShortCode()
 	}
 
-	// Save the mapping in the storage.
 	err := s.storage.Save(shortCode, longURL)
 	if err != nil {
-		// If saving fails (e.g., due to a rare collision in a real DB, or other storage errors),
-		// return an error.
 		return "", fmt.Errorf("failed to save URL mapping: %w", err)
 	}
-	return shortCode, nil // Return the newly generated short code
+	return shortCode, nil
 }
 
-// GetLongURL retrieves the original long URL for a given short code from storage.
 func (s *Service) GetLongURL(shortCode string) (string, error) {
-	longURL, ok := s.storage.Get(shortCode) // Attempt to retrieve the long URL
+	longURL, ok := s.storage.Get(shortCode)
 	if !ok {
-		// If the short code is not found in storage, return an error.
 		return "", errors.New("short code not found")
 	}
-	return longURL, nil // Return the found long URL
+	return longURL, nil
 }
 
-// GenerateShortCode increments the internal counter and converts it to a Base62 string.
-// This simple counter-based approach guarantees uniqueness for a single instance.
-// In a distributed system, a more sophisticated ID generation strategy would be required.
+// GenerateShortCode creates unique base62 code
 func (s *Service) GenerateShortCode() string {
-	s.counterMu.Lock() // Acquire a write lock to safely increment the counter
+	s.counterMu.Lock()
 	defer s.counterMu.Unlock()
-
-	s.counter++                       // Increment the counter
-	return base62.ToBase62(s.counter) // Convert the new counter value to Base62
+	s.counter++
+	return base62.ToBase62(s.counter)
 }
