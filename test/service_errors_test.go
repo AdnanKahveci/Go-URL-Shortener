@@ -10,8 +10,6 @@ import (
 func TestService_InvalidURL(t *testing.T) {
     store := storage.NewInMemoryStorage()
     s := service.NewService(store)
-    // Service accepts any string as URL, validation is done in handler
-    // Let's test that it works with any string
     code, err := s.ShortenURL("any-string")
     if err != nil {
         t.Fatalf("service should accept any string: %v", err)
